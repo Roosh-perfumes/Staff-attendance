@@ -6,61 +6,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Staff Attendance</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    font-family: Arial, sans-serif;
-    background: #f3f5f9;
-    margin: 0;
-    padding: 24px;
-    text-align: center;
-  }
-  .card {
-    background: white;
-    max-width: 450px;
-    margin: 50px auto;
-    padding: 28px 22px;
-    border-radius: 18px;
-    box-shadow: 0 4px 20px #00000012;
-  }
-  h1 { font-size: 28px; }
-  #date {
-    font-size: 19px;
-    margin-top: 25px;
-  }
-  #clock {
-    font-size: 32px;
-    font-weight: bold;
-    margin: 12px 0;
-  }
-  .timezone {
-    color: #666;
-    font-size: 13px;
-    margin-bottom: 25px;
-  }
-  button {
-    width: 100%;
-    padding: 17px;
-    margin: 8px 0;
-    border: none;
-    border-radius: 10px;
-    color: white;
-    font-size: 20px;
-    cursor: pointer;
-  }
-  .in { background: #18794e; }
-  .out { background: #b42318; }
-  .camera { background: #2458a6; }
-  #status {
-    margin-top: 22px;
-    line-height: 1.6;
-  }
-  video {
-    width: 100%;
-    border-radius: 12px;
-    margin-top: 15px;
-    display: none;
-    transform: scaleX(-1);
-  }
+* { box-sizing: border-box; }
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f5f9;
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+}
+.card {
+  background: white;
+  max-width: 450px;
+  margin: 25px auto;
+  padding: 25px 20px;
+  border-radius: 18px;
+  box-shadow: 0 4px 20px #00000012;
+}
+h1 { font-size: 28px; }
+#date { font-size: 19px; margin-top: 20px; }
+#clock {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 12px 0;
+}
+.small { color: #666; font-size: 13px; }
+button {
+  width: 100%;
+  padding: 16px;
+  margin: 8px 0;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 17px;
+  cursor: pointer;
+}
+.blue { background: #2458a6; }
+.green { background: #18794e; }
+.red { background: #b42318; }
+.gray { background: #555; }
+#status {
+  margin-top: 20px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+video {
+  width: 100%;
+  border-radius: 12px;
+  margin: 12px 0;
+  display: none;
+  transform: scaleX(-1);
+}
 </style>
 </head>
 <body>
@@ -71,36 +66,50 @@
 
   <div id="date"></div>
   <div id="clock"></div>
-  <div class="timezone">UAE Time (GMT+4)</div>
+  <p class="small">UAE Time (GMT+4)</p>
 
-  <button class="camera" onclick="startCamera()">
+  <button class="blue" onclick="startCamera()">
     Test Front Camera
   </button>
-
   <video id="video" autoplay playsinline muted></video>
 
-  <button class="in" onclick="checkLocation('IN')">
-    Check In
+  <h3>GPS Workplace Test</h3>
+  <p class="small">Allowed Radius: 150 meters</p>
+
+  <button class="gray" onclick="setTestLocation()">
+    Set Test Location
   </button>
 
-  <button class="out" onclick="checkLocation('OUT')">
+  <p id="workplace">No test location saved</p>
+
+  <button class="green" onclick="checkAttendance('IN')">
+    Check In
+  </button>
+  <button class="red" onclick="checkAttendance('OUT')">
     Check Out
   </button>
 
-  <div id="status">Ready for testing</div>
+  <div id="status">Ready for GPS testing</div>
+  <p class="small">
+    Test mode only. No attendance is saved.
+  </p>
 </div>
 
 <script>
+const RADIUS = 150;
+const MAX_ACCURACY = 75;
 const statusBox = document.getElementById("status");
 const video = document.getElementById("video");
 let cameraStream = null;
+let workplace = null;
 
 function updateClock() {
   const now = new Date();
+  const options = { timeZone: "Asia/Dubai" };
 
   document.getElementById("date").textContent =
     new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Dubai",
+      ...options,
       weekday: "long",
       day: "2-digit",
       month: "long",
@@ -109,71 +118,161 @@ function updateClock() {
 
   document.getElementById("clock").textContent =
     new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Dubai",
+      ...options,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: true
     }).format(now);
 }
-
 updateClock();
 setInterval(updateClock, 1000);
 
 async function startCamera() {
   try {
-    if (!navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia) {
-      statusBox.textContent = "Camera not supported.";
-      return;
-    }
-
     if (cameraStream) {
       cameraStream.getTracks().forEach(t => t.stop());
     }
-
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: "user" }
-    });
-
+    cameraStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "user" }
+      });
     video.srcObject = cameraStream;
     video.style.display = "block";
     await video.play();
-    statusBox.textContent = "Front camera is working.";
-  } catch (error) {
-    statusBox.textContent =
-      "Camera error: " + error.message;
+    statusBox.textContent = "Front camera working.";
+  } catch (e) {
+    statusBox.textContent = "Camera error: " + e.message;
   }
 }
 
-function checkLocation(type) {
-  if (!navigator.geolocation) {
-    statusBox.textContent = "GPS not supported.";
+function getGPS() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("GPS not supported"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      reject,
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
+      }
+    );
+  });
+}
+
+function distanceMeters(a, b) {
+  const rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.lon - a.lon);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) *
+    Math.cos(rad(b.lat)) *
+    Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 *
+    Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+async function setTestLocation() {
+  statusBox.textContent = "Detecting test location...";
+  try {
+    const p = await getGPS();
+    if (p.coords.accuracy > MAX_ACCURACY) {
+      statusBox.textContent =
+        "GPS accuracy too low: " +
+        Math.round(p.coords.accuracy) +
+        "m. Try outdoors.";
+      return;
+    }
+
+    workplace = {
+      lat: p.coords.latitude,
+      lon: p.coords.longitude
+    };
+
+    localStorage.setItem(
+      "testWorkplace",
+      JSON.stringify(workplace)
+    );
+
+    document.getElementById("workplace").textContent =
+      "Test location saved on this phone";
+
+    statusBox.textContent =
+      "Location saved. GPS accuracy: " +
+      Math.round(p.coords.accuracy) + "m.";
+  } catch (e) {
+    statusBox.textContent = "GPS error: " + e.message;
+  }
+}
+
+async function checkAttendance(type) {
+  if (!workplace) {
+    statusBox.textContent =
+      "Please set test location first.";
     return;
   }
 
   statusBox.textContent = "Checking GPS...";
+  try {
+    const p = await getGPS();
+    const accuracy = p.coords.accuracy;
 
-  navigator.geolocation.getCurrentPosition(
-    function(position) {
+    if (accuracy > MAX_ACCURACY) {
       statusBox.textContent =
-        "GPS detected. " + type +
-        " is not yet recorded. Accuracy: " +
-        Math.round(position.coords.accuracy) + " meters.";
-    },
-    function(error) {
-      statusBox.textContent =
-        "GPS error: " + error.message;
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0
+        "GPS accuracy too low: " +
+        Math.round(accuracy) +
+        "m. Try again outdoors.";
+      return;
     }
-  );
-}
-</script>
 
+    const current = {
+      lat: p.coords.latitude,
+      lon: p.coords.longitude
+    };
+    const distance = distanceMeters(workplace, current);
+
+    if (distance + accuracy <= RADIUS) {
+      statusBox.textContent =
+        type + " TEST ALLOWED. Distance: " +
+        Math.round(distance) +
+        "m. Accuracy: " +
+        Math.round(accuracy) + "m.";
+    } else if (distance - accuracy > RADIUS) {
+      statusBox.textContent =
+        type + " REJECTED: Outside workplace. " +
+        "Distance: " + Math.round(distance) + "m.";
+    } else {
+      statusBox.textContent =
+        "Location uncertain near boundary. " +
+        "Distance: " + Math.round(distance) +
+        "m, accuracy: " + Math.round(accuracy) +
+        "m. Try again.";
+    }
+  } catch (e) {
+    statusBox.textContent = "GPS error: " + e.message;
+  }
+}
+
+try {
+  const saved = JSON.parse(
+    localStorage.getItem("testWorkplace")
+  );
+  if (
+    saved &&
+    Number.isFinite(saved.lat) &&
+    Number.isFinite(saved.lon)
+  ) {
+    workplace = saved;
+    document.getElementById("workplace").textContent =
+      "Test location saved on this phone";
+  }
+} catch (e) {}
+</script>
 </body>
 </html>

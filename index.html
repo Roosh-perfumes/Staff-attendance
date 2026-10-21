@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff Attendance</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f5f9;
+      margin: 0;
+      padding: 25px;
+      text-align: center;
+    }
+    .card {
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      max-width: 420px;
+      margin: 40px auto;
+      box-shadow: 0 3px 15px #0001;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      margin-top: 15px;
+      border: 0;
+      border-radius: 9px;
+      background: #167347;
+      color: white;
+      font-size: 17px;
+    }
+    .out { background: #b42318; }
+    #status { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Staff Attendance</h1>
+    <p>GPS Attendance System</p>
+    <h2 id="clock"></h2>
+    <button onclick="attendance('IN')">
+      Check In
+    </button>
+    <button class="out" onclick="attendance('OUT')">
+      Check Out
+    </button>
+    <p id="status">Location not checked</p>
+  </div>
+
+  <script>
+    function updateClock() {
+      document.getElementById("clock").textContent =
+        new Date().toLocaleTimeString("en-GB");
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    function attendance(type) {
+      const status = document.getElementById("status");
+
+      if (!navigator.geolocation) {
+        status.textContent = "GPS not supported";
+        return;
+      }
+
+      status.textContent = "Checking GPS location...";
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          status.textContent =
+            "GPS detected. " + type +
+            " is not yet recorded.";
+        },
+        error => {
+          status.textContent =
+            "Location error: " + error.message;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    }
+  </script>
+</body>
+</html>

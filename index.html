@@ -6,8 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Staff Attendance</title>
 
-<link rel="stylesheet"
- href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <style>
 *{box-sizing:border-box}
@@ -35,22 +34,19 @@ button{
 .green{background:#18794e}
 .red{background:#b42318}
 video{
- display:none;width:100%;border-radius:12px;
- margin:12px 0;transform:scaleX(-1)
+ display:none;width:100%;
+ border-radius:12px;margin:12px 0;
+ transform:scaleX(-1)
 }
 #mapSection{display:none;margin-top:18px}
 #map{
- height:340px;width:100%;
- border-radius:12px;
- background:#ddd
+ height:350px;width:100%;
+ border-radius:12px;background:#ddd
 }
 #status{
- margin:18px 0;
- padding:12px;
- border-radius:10px;
- background:#f1f3f5;
- line-height:1.6;
- overflow-wrap:anywhere
+ margin:18px 0;padding:12px;
+ border-radius:10px;background:#f1f3f5;
+ line-height:1.6;overflow-wrap:anywhere
 }
 #distance{font-size:17px;font-weight:bold}
 .legend{font-size:13px;margin:9px 0}
@@ -106,15 +102,15 @@ TEST MODE — Attendance is not saved.
 <script>
 "use strict";
 
-// PROVISIONAL workplace coordinates.
-// Verify the exact workplace pin before production use.
-const WORKPLACE = {
+// Provisional workplace location.
+// Verify these coordinates before real use.
+const WORKPLACE={
  lat:25.069191,
  lon:55.307863
 };
 
-const RADIUS = 150;
-const MAX_ACCURACY = 75;
+const RADIUS=150;
+const MAX_ACCURACY=75;
 
 const statusBox=document.getElementById("status");
 const video=document.getElementById("video");
@@ -122,6 +118,7 @@ const video=document.getElementById("video");
 let cameraStream=null;
 let map=null;
 let mapLayers=[];
+let busy=false;
 
 function updateClock(){
  const now=new Date();
@@ -214,25 +211,26 @@ function formatDistance(m){
 }
 
 function showMap(current,distance){
- const section=document.getElementById("mapSection");
- section.style.display="block";
+ document.getElementById("mapSection").style.display="block";
 
  document.getElementById("distance").textContent=
  "Distance from workplace: "+formatDistance(distance);
 
  if(typeof L==="undefined"){
-  statusBox.textContent+=
-   " Satellite map library could not load.";
-  return;
+  throw new Error("Map library did not load");
  }
 
+ const workplacePoint=[WORKPLACE.lat,WORKPLACE.lon];
+ const employeePoint=[current.lat,current.lon];
+
  if(!map){
-  map=L.map("map");
+  // Set the map view BEFORE adding any circles.
+  map=L.map("map").setView(workplacePoint,15);
+
   L.tileLayer(
    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
    {
-    attribution:
-     "Tiles © Esri and imagery contributors",
+    attribution:"Imagery © Esri and contributors",
     maxZoom:19
    }
   ).addTo(map);
@@ -241,22 +239,17 @@ function showMap(current,distance){
  mapLayers.forEach(layer=>map.removeLayer(layer));
  mapLayers=[];
 
- const workplacePoint=[WORKPLACE.lat,WORKPLACE.lon];
- const employeePoint=[current.lat,current.lon];
-
  const workplaceMarker=L.circleMarker(
   workplacePoint,{
-   radius:9,color:"white",
-   weight:2,fillColor:"green",
-   fillOpacity:1
+   radius:9,color:"white",weight:2,
+   fillColor:"green",fillOpacity:1
   }
  ).addTo(map).bindPopup("Workplace");
 
  const employeeMarker=L.circleMarker(
   employeePoint,{
-   radius:9,color:"white",
-   weight:2,fillColor:"blue",
-   fillOpacity:1
+   radius:9,color:"white",weight:2,
+   fillColor:"blue",fillOpacity:1
   }
  ).addTo(map).bindPopup("Your GPS Location");
 
@@ -272,7 +265,11 @@ function showMap(current,distance){
 
  const connection=L.polyline(
   [workplacePoint,employeePoint],
-  {color:"#ffcc00",weight:3,dashArray:"7,7"}
+  {
+   color:"#ffcc00",
+   weight:3,
+   dashArray:"7,7"
+  }
  ).addTo(map);
 
  mapLayers.push(
@@ -293,10 +290,13 @@ function showMap(current,distance){
    maxZoom:18,
    animate:false
   });
- },150);
+ },200);
 }
 
 async function attendance(type){
+ if(busy)return;
+ busy=true;
+
  document.getElementById("mapSection").style.display="none";
  statusBox.textContent="Opening front camera...";
 
@@ -305,55 +305,59 @@ async function attendance(type){
  }catch(e){
   statusBox.textContent=
    "Camera unavailable: "+e.message+
-   ". Attendance test stopped.";
+   ". Test stopped.";
+  busy=false;
   return;
  }
 
  statusBox.textContent="Checking GPS location...";
 
+ let position;
  try{
-  const p=await getGPS();
-
-  const current={
-   lat:p.coords.latitude,
-   lon:p.coords.longitude
-  };
-
-  const accuracy=p.coords.accuracy;
-  const distance=distanceMeters(WORKPLACE,current);
-
-  showMap(current,distance);
-
-  if(accuracy>MAX_ACCURACY){
-   statusBox.textContent=
-    "GPS accuracy too low ("+
-    Math.round(accuracy)+
-    "m). "+type+" NOT ALLOWED. Try again.";
-   return;
-  }
-
-  if(distance+accuracy<=RADIUS){
-   statusBox.textContent=
-    type+" TEST ALLOWED. "+
-    "Distance: "+formatDistance(distance)+
-    ". GPS accuracy: "+
-    Math.round(accuracy)+"m.";
-  }else if(distance-accuracy>RADIUS){
-   statusBox.textContent=
-    type+" REJECTED — OUTSIDE WORKPLACE. "+
-    "Distance: "+formatDistance(distance)+
-    ". GPS accuracy: "+
-    Math.round(accuracy)+"m.";
-  }else{
-   statusBox.textContent=
-    type+" NOT ALLOWED — GPS boundary uncertain. "+
-    "Distance: "+formatDistance(distance)+
-    ". Accuracy: "+Math.round(accuracy)+"m.";
-  }
-
+  position=await getGPS();
  }catch(e){
   statusBox.textContent="GPS error: "+e.message;
+  busy=false;
+  return;
  }
+
+ const current={
+  lat:position.coords.latitude,
+  lon:position.coords.longitude
+ };
+
+ const accuracy=position.coords.accuracy;
+ const distance=distanceMeters(WORKPLACE,current);
+
+ if(accuracy>MAX_ACCURACY){
+  statusBox.textContent=
+   type+" NOT ALLOWED — GPS accuracy too low ("+
+   Math.round(accuracy)+"m).";
+ }else if(distance+accuracy<=RADIUS){
+  statusBox.textContent=
+   type+" TEST ALLOWED. Distance: "+
+   formatDistance(distance)+
+   ". Accuracy: "+Math.round(accuracy)+"m.";
+ }else if(distance-accuracy>RADIUS){
+  statusBox.textContent=
+   type+" REJECTED — OUTSIDE WORKPLACE. "+
+   "Distance: "+formatDistance(distance)+
+   ". Accuracy: "+Math.round(accuracy)+"m.";
+ }else{
+  statusBox.textContent=
+   type+" NOT ALLOWED — GPS boundary uncertain. "+
+   "Distance: "+formatDistance(distance)+
+   ". Accuracy: "+Math.round(accuracy)+"m.";
+ }
+
+ try{
+  showMap(current,distance);
+ }catch(e){
+  statusBox.textContent+=
+   " Map error: "+e.message;
+ }
+
+ busy=false;
 }
 </script>
 </body>

@@ -3,276 +3,358 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Staff Attendance</title>
+
+<link rel="stylesheet"
+ href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <style>
-* { box-sizing: border-box; }
-body {
-  font-family: Arial, sans-serif;
-  background: #f3f5f9;
-  margin: 0;
-  padding: 20px;
-  text-align: center;
+*{box-sizing:border-box}
+body{
+ font-family:Arial,sans-serif;
+ background:#f3f5f9;
+ margin:0;padding:16px;text-align:center
 }
-.card {
-  background: white;
-  max-width: 450px;
-  margin: 25px auto;
-  padding: 25px 20px;
-  border-radius: 18px;
-  box-shadow: 0 4px 20px #00000012;
+.card{
+ background:white;max-width:480px;
+ margin:15px auto;padding:22px 16px;
+ border-radius:18px;
+ box-shadow:0 4px 20px #00000012
 }
-h1 { font-size: 28px; }
-#date { font-size: 19px; margin-top: 20px; }
-#clock {
-  font-size: 32px;
-  font-weight: bold;
-  margin: 12px 0;
+h1{font-size:27px}
+#date{font-size:18px;margin-top:20px}
+#clock{font-size:31px;font-weight:bold;margin:10px}
+.small{font-size:13px;color:#666}
+button{
+ width:100%;padding:16px;margin:7px 0;
+ border:0;border-radius:10px;
+ color:white;font-size:18px
 }
-.small { color: #666; font-size: 13px; }
-button {
-  width: 100%;
-  padding: 16px;
-  margin: 8px 0;
-  border: none;
-  border-radius: 10px;
-  color: white;
-  font-size: 17px;
-  cursor: pointer;
+.blue{background:#2458a6}
+.green{background:#18794e}
+.red{background:#b42318}
+video{
+ display:none;width:100%;border-radius:12px;
+ margin:12px 0;transform:scaleX(-1)
 }
-.blue { background: #2458a6; }
-.green { background: #18794e; }
-.red { background: #b42318; }
-.gray { background: #555; }
-#status {
-  margin-top: 20px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
+#mapSection{display:none;margin-top:18px}
+#map{
+ height:340px;width:100%;
+ border-radius:12px;
+ background:#ddd
 }
-video {
-  width: 100%;
-  border-radius: 12px;
-  margin: 12px 0;
-  display: none;
-  transform: scaleX(-1);
+#status{
+ margin:18px 0;
+ padding:12px;
+ border-radius:10px;
+ background:#f1f3f5;
+ line-height:1.6;
+ overflow-wrap:anywhere
 }
+#distance{font-size:17px;font-weight:bold}
+.legend{font-size:13px;margin:9px 0}
 </style>
 </head>
+
 <body>
-
 <div class="card">
-  <h1>Staff Attendance</h1>
-  <p>GPS Attendance System</p>
+<h1>Staff Attendance</h1>
+<p>GPS Attendance System</p>
 
-  <div id="date"></div>
-  <div id="clock"></div>
-  <p class="small">UAE Time (GMT+4)</p>
+<div id="date"></div>
+<div id="clock"></div>
+<p class="small">UAE Time (GMT+4)</p>
 
-  <button class="blue" onclick="startCamera()">
-    Test Front Camera
-  </button>
-  <video id="video" autoplay playsinline muted></video>
+<button class="blue" onclick="testCamera()">
+Test Front Camera
+</button>
 
-  <h3>GPS Workplace Test</h3>
-  <p class="small">Allowed Radius: 150 meters</p>
+<video id="video" autoplay playsinline muted></video>
 
-  <button class="gray" onclick="setTestLocation()">
-    Set Test Location
-  </button>
+<p class="small">Allowed Radius: 150 meters</p>
 
-  <p id="workplace">No test location saved</p>
+<button class="green" onclick="attendance('IN')">
+Check In
+</button>
 
-  <button class="green" onclick="checkAttendance('IN')">
-    Check In
-  </button>
-  <button class="red" onclick="checkAttendance('OUT')">
-    Check Out
-  </button>
+<button class="red" onclick="attendance('OUT')">
+Check Out
+</button>
 
-  <div id="status">Ready for GPS testing</div>
-  <p class="small">
-    Test mode only. No attendance is saved.
-  </p>
+<div id="status">Ready for testing</div>
+
+<section id="mapSection">
+<h3>Satellite Location Map</h3>
+<div id="map"></div>
+<p class="legend">
+🟢 Workplace &nbsp; 🔵 Your Location
+</p>
+<p id="distance"></p>
+<p class="small">
+Straight-line distance, not driving distance.
+</p>
+</section>
+
+<p class="small">
+TEST MODE — Attendance is not saved.
+</p>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
+"use strict";
+
+// PROVISIONAL workplace coordinates.
+// Verify the exact workplace pin before production use.
+const WORKPLACE = {
+ lat:25.069191,
+ lon:55.307863
+};
+
 const RADIUS = 150;
 const MAX_ACCURACY = 75;
-const statusBox = document.getElementById("status");
-const video = document.getElementById("video");
-let cameraStream = null;
-let workplace = null;
 
-function updateClock() {
-  const now = new Date();
-  const options = { timeZone: "Asia/Dubai" };
+const statusBox=document.getElementById("status");
+const video=document.getElementById("video");
 
-  document.getElementById("date").textContent =
-    new Intl.DateTimeFormat("en-GB", {
-      ...options,
-      weekday: "long",
-      day: "2-digit",
-      month: "long",
-      year: "numeric"
-    }).format(now);
+let cameraStream=null;
+let map=null;
+let mapLayers=[];
 
-  document.getElementById("clock").textContent =
-    new Intl.DateTimeFormat("en-GB", {
-      ...options,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true
-    }).format(now);
+function updateClock(){
+ const now=new Date();
+
+ document.getElementById("date").textContent=
+ new Intl.DateTimeFormat("en-GB",{
+  timeZone:"Asia/Dubai",
+  weekday:"long",
+  day:"2-digit",
+  month:"long",
+  year:"numeric"
+ }).format(now);
+
+ document.getElementById("clock").textContent=
+ new Intl.DateTimeFormat("en-GB",{
+  timeZone:"Asia/Dubai",
+  hour:"2-digit",
+  minute:"2-digit",
+  second:"2-digit",
+  hour12:true
+ }).format(now);
 }
 updateClock();
-setInterval(updateClock, 1000);
+setInterval(updateClock,1000);
 
-async function startCamera() {
-  try {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(t => t.stop());
-    }
-    cameraStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: "user" }
-      });
-    video.srcObject = cameraStream;
-    video.style.display = "block";
-    await video.play();
-    statusBox.textContent = "Front camera working.";
-  } catch (e) {
-    statusBox.textContent = "Camera error: " + e.message;
-  }
+async function startCamera(){
+ if(!navigator.mediaDevices?.getUserMedia){
+  throw new Error("Camera not supported");
+ }
+
+ if(cameraStream){
+  cameraStream.getTracks().forEach(t=>t.stop());
+ }
+
+ cameraStream=await navigator.mediaDevices.getUserMedia({
+  audio:false,
+  video:{facingMode:"user"}
+ });
+
+ video.srcObject=cameraStream;
+ video.style.display="block";
+ await video.play();
 }
 
-function getGPS() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("GPS not supported"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      reject,
-      {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0
-      }
-    );
-  });
+async function testCamera(){
+ try{
+  await startCamera();
+  statusBox.textContent="Front camera is working.";
+ }catch(e){
+  statusBox.textContent="Camera error: "+e.message;
+ }
 }
 
-function distanceMeters(a, b) {
-  const rad = x => x * Math.PI / 180;
-  const dLat = rad(b.lat - a.lat);
-  const dLon = rad(b.lon - a.lon);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(a.lat)) *
-    Math.cos(rad(b.lat)) *
-    Math.sin(dLon / 2) ** 2;
-  return 6371000 * 2 *
-    Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-async function setTestLocation() {
-  statusBox.textContent = "Detecting test location...";
-  try {
-    const p = await getGPS();
-    if (p.coords.accuracy > MAX_ACCURACY) {
-      statusBox.textContent =
-        "GPS accuracy too low: " +
-        Math.round(p.coords.accuracy) +
-        "m. Try outdoors.";
-      return;
-    }
-
-    workplace = {
-      lat: p.coords.latitude,
-      lon: p.coords.longitude
-    };
-
-    localStorage.setItem(
-      "testWorkplace",
-      JSON.stringify(workplace)
-    );
-
-    document.getElementById("workplace").textContent =
-      "Test location saved on this phone";
-
-    statusBox.textContent =
-      "Location saved. GPS accuracy: " +
-      Math.round(p.coords.accuracy) + "m.";
-  } catch (e) {
-    statusBox.textContent = "GPS error: " + e.message;
-  }
-}
-
-async function checkAttendance(type) {
-  if (!workplace) {
-    statusBox.textContent =
-      "Please set test location first.";
-    return;
+function getGPS(){
+ return new Promise((resolve,reject)=>{
+  if(!navigator.geolocation){
+   reject(new Error("GPS not supported"));
+   return;
   }
 
-  statusBox.textContent = "Checking GPS...";
-  try {
-    const p = await getGPS();
-    const accuracy = p.coords.accuracy;
-
-    if (accuracy > MAX_ACCURACY) {
-      statusBox.textContent =
-        "GPS accuracy too low: " +
-        Math.round(accuracy) +
-        "m. Try again outdoors.";
-      return;
-    }
-
-    const current = {
-      lat: p.coords.latitude,
-      lon: p.coords.longitude
-    };
-    const distance = distanceMeters(workplace, current);
-
-    if (distance + accuracy <= RADIUS) {
-      statusBox.textContent =
-        type + " TEST ALLOWED. Distance: " +
-        Math.round(distance) +
-        "m. Accuracy: " +
-        Math.round(accuracy) + "m.";
-    } else if (distance - accuracy > RADIUS) {
-      statusBox.textContent =
-        type + " REJECTED: Outside workplace. " +
-        "Distance: " + Math.round(distance) + "m.";
-    } else {
-      statusBox.textContent =
-        "Location uncertain near boundary. " +
-        "Distance: " + Math.round(distance) +
-        "m, accuracy: " + Math.round(accuracy) +
-        "m. Try again.";
-    }
-  } catch (e) {
-    statusBox.textContent = "GPS error: " + e.message;
-  }
-}
-
-try {
-  const saved = JSON.parse(
-    localStorage.getItem("testWorkplace")
+  navigator.geolocation.getCurrentPosition(
+   resolve,reject,{
+    enableHighAccuracy:true,
+    timeout:20000,
+    maximumAge:0
+   }
   );
-  if (
-    saved &&
-    Number.isFinite(saved.lat) &&
-    Number.isFinite(saved.lon)
-  ) {
-    workplace = saved;
-    document.getElementById("workplace").textContent =
-      "Test location saved on this phone";
+ });
+}
+
+function distanceMeters(a,b){
+ const rad=x=>x*Math.PI/180;
+ const dLat=rad(b.lat-a.lat);
+ const dLon=rad(b.lon-a.lon);
+
+ const h=
+ Math.sin(dLat/2)**2+
+ Math.cos(rad(a.lat))*
+ Math.cos(rad(b.lat))*
+ Math.sin(dLon/2)**2;
+
+ return 6371000*2*
+ Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+
+function formatDistance(m){
+ return m>=1000
+  ?(m/1000).toFixed(2)+" km"
+  :Math.round(m)+" m";
+}
+
+function showMap(current,distance){
+ const section=document.getElementById("mapSection");
+ section.style.display="block";
+
+ document.getElementById("distance").textContent=
+ "Distance from workplace: "+formatDistance(distance);
+
+ if(typeof L==="undefined"){
+  statusBox.textContent+=
+   " Satellite map library could not load.";
+  return;
+ }
+
+ if(!map){
+  map=L.map("map");
+  L.tileLayer(
+   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+   {
+    attribution:
+     "Tiles © Esri and imagery contributors",
+    maxZoom:19
+   }
+  ).addTo(map);
+ }
+
+ mapLayers.forEach(layer=>map.removeLayer(layer));
+ mapLayers=[];
+
+ const workplacePoint=[WORKPLACE.lat,WORKPLACE.lon];
+ const employeePoint=[current.lat,current.lon];
+
+ const workplaceMarker=L.circleMarker(
+  workplacePoint,{
+   radius:9,color:"white",
+   weight:2,fillColor:"green",
+   fillOpacity:1
   }
-} catch (e) {}
+ ).addTo(map).bindPopup("Workplace");
+
+ const employeeMarker=L.circleMarker(
+  employeePoint,{
+   radius:9,color:"white",
+   weight:2,fillColor:"blue",
+   fillOpacity:1
+  }
+ ).addTo(map).bindPopup("Your GPS Location");
+
+ const allowedCircle=L.circle(
+  workplacePoint,{
+   radius:RADIUS,
+   color:"green",
+   weight:2,
+   fillColor:"green",
+   fillOpacity:0.13
+  }
+ ).addTo(map);
+
+ const connection=L.polyline(
+  [workplacePoint,employeePoint],
+  {color:"#ffcc00",weight:3,dashArray:"7,7"}
+ ).addTo(map);
+
+ mapLayers.push(
+  workplaceMarker,
+  employeeMarker,
+  allowedCircle,
+  connection
+ );
+
+ const bounds=L.latLngBounds(
+  workplacePoint,employeePoint
+ );
+ bounds.extend(allowedCircle.getBounds());
+
+ setTimeout(()=>{
+  map.invalidateSize();
+  map.fitBounds(bounds.pad(0.3),{
+   maxZoom:18,
+   animate:false
+  });
+ },150);
+}
+
+async function attendance(type){
+ document.getElementById("mapSection").style.display="none";
+ statusBox.textContent="Opening front camera...";
+
+ try{
+  await startCamera();
+ }catch(e){
+  statusBox.textContent=
+   "Camera unavailable: "+e.message+
+   ". Attendance test stopped.";
+  return;
+ }
+
+ statusBox.textContent="Checking GPS location...";
+
+ try{
+  const p=await getGPS();
+
+  const current={
+   lat:p.coords.latitude,
+   lon:p.coords.longitude
+  };
+
+  const accuracy=p.coords.accuracy;
+  const distance=distanceMeters(WORKPLACE,current);
+
+  showMap(current,distance);
+
+  if(accuracy>MAX_ACCURACY){
+   statusBox.textContent=
+    "GPS accuracy too low ("+
+    Math.round(accuracy)+
+    "m). "+type+" NOT ALLOWED. Try again.";
+   return;
+  }
+
+  if(distance+accuracy<=RADIUS){
+   statusBox.textContent=
+    type+" TEST ALLOWED. "+
+    "Distance: "+formatDistance(distance)+
+    ". GPS accuracy: "+
+    Math.round(accuracy)+"m.";
+  }else if(distance-accuracy>RADIUS){
+   statusBox.textContent=
+    type+" REJECTED — OUTSIDE WORKPLACE. "+
+    "Distance: "+formatDistance(distance)+
+    ". GPS accuracy: "+
+    Math.round(accuracy)+"m.";
+  }else{
+   statusBox.textContent=
+    type+" NOT ALLOWED — GPS boundary uncertain. "+
+    "Distance: "+formatDistance(distance)+
+    ". Accuracy: "+Math.round(accuracy)+"m.";
+  }
+
+ }catch(e){
+  statusBox.textContent="GPS error: "+e.message;
+ }
+}
 </script>
 </body>
 </html>
